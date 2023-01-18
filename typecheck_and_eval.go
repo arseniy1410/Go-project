@@ -90,6 +90,7 @@ type Stmt interface {
 // Statement cases (incomplete)
 
 type Seq [2]Stmt
+type Print [1]Exp
 type Decl struct {
 	lhs string
 	rhs Exp
@@ -98,6 +99,11 @@ type IfThenElse struct {
 	cond     Exp
 	thenStmt Stmt
 	elseStmt Stmt
+}
+
+type While struct {
+	cond Exp
+	stmt Stmt
 }
 
 type Assign struct {
@@ -109,10 +115,13 @@ type Assign struct {
 
 type Bool bool
 type Num int
+type Negate [1]Exp
 type Mult [2]Exp
 type Plus [2]Exp
 type And [2]Exp
 type Or [2]Exp
+type Equals [2]Exp
+type Lesser [2]Exp
 type Var string
 
 //-----------------------------------
@@ -126,6 +135,22 @@ func (stmt Seq) pretty() string {
 
 func (decl Decl) pretty() string {
 	return decl.lhs + " := " + decl.rhs.pretty()
+}
+
+func (assgn Assign) pretty() string {
+	return assgn.lhs + " = " + assgn.rhs.pretty()
+}
+
+func (ifStmnt IfThenElse) pretty() string {
+	return "if" + ifStmnt.cond.pretty() + "{" + ifStmnt.thenStmt.pretty() + "} else {" + ifStmnt.elseStmt.pretty() + "}"
+}
+
+func (whl While) pretty() string {
+	return "while" + whl.cond.pretty() + "{" + whl.stmt.pretty() + "}"
+}
+
+func (pt Print) pretty() string {
+	return pt.pretty()
 }
 
 // eval
@@ -149,6 +174,24 @@ func (ite IfThenElse) eval(s ValState) {
 		fmt.Printf("if-then-else eval fail")
 	}
 
+}
+
+func (whl While) eval(s ValState) {
+	v := whl.cond.eval(s)
+	if v.flag == ValueBool {
+		for {
+			whl.stmt.eval(s)
+			if !v.valB {
+				break
+			}
+		}
+	} else {
+		fmt.Printf("while eval fail")
+	}
+}
+
+func (prnt Print) eval(s ValState) {
+	prnt[0].eval(s)
 }
 
 // Maps are represented via points.
@@ -184,6 +227,11 @@ func (a Assign) check(t TyState) bool {
 	return t[x] == a.rhs.infer(t)
 }
 
+// func (ite IfThenElse) check(t TyState) bool {
+
+// 	return false
+// }
+
 //-----------------------------------
 // Exp instances
 
@@ -199,7 +247,36 @@ func (x Bool) pretty() string {
 	} else {
 		return "false"
 	}
+}
 
+func (e Negate) pretty() string {
+	var x string
+	x = "not "
+	x += e[0].pretty()
+
+	return x
+}
+
+func (e Equals) pretty() string {
+	var x string
+	x = "("
+	x += e[0].pretty()
+	x += "=="
+	x += e[1].pretty()
+	x += ")"
+
+	return x
+}
+
+func (e Lesser) pretty() string {
+	var x string
+	x = "("
+	x += e[0].pretty()
+	x += "<"
+	x += e[1].pretty()
+	x += ")"
+
+	return x
 }
 
 func (x Num) pretty() string {
@@ -258,6 +335,34 @@ func (e Or) pretty() string {
 
 func (x Bool) eval(s ValState) Val {
 	return mkBool((bool)(x))
+}
+
+func (e Negate) eval(s ValState) Val {
+	b := e[0].eval(s)
+	if b.flag == ValueBool {
+		return mkBool((bool)(!b.valB))
+	}
+	return mkUndefined()
+}
+
+func (e Equals) eval(s ValState) Val {
+	b1 := e[0].eval(s)
+	b2 := e[1].eval(s)
+	if b1.flag == ValueBool && b2.flag == ValueBool {
+		return mkBool(b1.valB == b2.valB)
+	} else if b1.flag == ValueInt && b2.flag == ValueInt {
+		return mkBool(b1.valI < b2.valI)
+	}
+	return mkUndefined()
+}
+
+func (e Lesser) eval(s ValState) Val {
+	n1 := e[0].eval(s)
+	n2 := e[1].eval(s)
+	if n1.flag == ValueInt && n2.flag == ValueInt {
+		return mkBool(n1.valI < n2.valI)
+	}
+	return mkUndefined()
 }
 
 func (x Num) eval(s ValState) Val {
@@ -327,6 +432,14 @@ func (x Num) infer(t TyState) Type {
 	return TyInt
 }
 
+func (e Negate) infer(t TyState) Type {
+	t1 := e[0].infer(t)
+	if t1 == TyBool {
+		return TyBool
+	}
+	return TyIllTyped
+}
+
 func (e Mult) infer(t TyState) Type {
 	t1 := e[0].infer(t)
 	t2 := e[1].infer(t)
@@ -363,6 +476,24 @@ func (e Or) infer(t TyState) Type {
 	return TyIllTyped
 }
 
+func (e Equals) infer(t TyState) Type {
+	t1 := e[0].infer(t)
+	t2 := e[1].infer(t)
+	if t1 == TyInt && t2 == TyInt || t1 == TyBool && t2 == TyBool {
+		return TyBool
+	}
+	return TyIllTyped
+}
+
+func (e Lesser) infer(t TyState) Type {
+	t1 := e[0].infer(t)
+	t2 := e[1].infer(t)
+	if t1 == TyInt && t2 == TyInt {
+		return TyInt
+	}
+	return TyIllTyped
+}
+
 // Helper functions to build ASTs by hand
 
 func number(x int) Exp {
@@ -395,6 +526,32 @@ func or(x, y Exp) Exp {
 	return (Or)([2]Exp{x, y})
 }
 
+func negate(x Exp) Exp {
+	// return Negate([1]Exp{x})
+	neg := Negate([1]Exp{x})
+	return neg
+}
+
+func equals(x, y Exp) Exp {
+	return (Equals)([2]Exp{x, y})
+}
+
+func lesser(x, y Exp) Exp {
+	return (Lesser)([2]Exp{x, y})
+}
+
+// func while(x, y Exp) Exp {
+// 	return (While)([2]Exp{x, y})
+// }
+
+// func print(x Exp) Exp {
+// 	return (Print)([1]Exp{x})
+// }
+
+func ite(cond Exp, stmt1, stmt2 Stmt) IfThenElse {
+	return IfThenElse{cond, stmt1, stmt2}
+}
+
 // Examples
 
 func run(e Exp) {
@@ -422,6 +579,22 @@ func ex3() {
 	run(ast)
 }
 
+func ex4() {
+	ast := negate(number(2))
+	run(ast)
+}
+
+func ex5() {
+	ast := lesser(number(2), number(4))
+	run(ast)
+}
+
+// func ex6() {
+// 	ast := ite(lesser(number(2), number(4)), number(2), number(1))
+
+// 	run(ast)
+// }
+
 func main() {
 
 	fmt.Printf("\n")
@@ -429,4 +602,7 @@ func main() {
 	ex1()
 	ex2()
 	ex3()
+	ex4()
+	ex5()
+
 }
