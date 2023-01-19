@@ -90,7 +90,7 @@ type Stmt interface {
 // Statement cases (incomplete)
 
 type Seq [2]Stmt
-type Print [1]Exp
+
 type Decl struct {
 	lhs string
 	rhs Exp
@@ -108,8 +108,11 @@ type While struct {
 
 type Assign struct {
 	lhs string
+	// lhs Exp
 	rhs Exp
 }
+
+type Print [1]Exp
 
 // Expression cases (incomplete)
 
@@ -122,6 +125,7 @@ type And [2]Exp
 type Or [2]Exp
 type Equals [2]Exp
 type Lesser [2]Exp
+type Group [1]Exp
 type Var string
 
 //-----------------------------------
@@ -202,6 +206,12 @@ func (decl Decl) eval(s ValState) {
 	s[x] = v
 }
 
+func (asgn Assign) eval(s ValState) {
+	v := asgn.rhs.eval(s)
+	x := (string)(asgn.lhs)
+	s[x] = v
+}
+
 // type check
 
 func (stmt Seq) check(t TyState) bool {
@@ -223,14 +233,39 @@ func (decl Decl) check(t TyState) bool {
 }
 
 func (a Assign) check(t TyState) bool {
+	ty := a.rhs.infer(t)
+	if ty == TyIllTyped {
+		return false
+	}
+
 	x := (string)(a.lhs)
-	return t[x] == a.rhs.infer(t)
+	t[x] = ty
+	// if tx == TyIllTyped || ty != tx {
+	// 	return false
+	// }
+	return true
 }
 
-// func (ite IfThenElse) check(t TyState) bool {
+func (ite IfThenElse) check(t TyState) bool {
+	ty := ite.cond.infer(t)
+	if ty == TyIllTyped {
+		return false
+	}
 
-// 	return false
-// }
+	th := ite.thenStmt.check(t)
+	el := ite.elseStmt.check(t)
+
+	return th && el
+}
+
+func (a While) check(t TyState) bool {
+	ty := a.cond.infer(t)
+	if ty == TyIllTyped {
+		return false
+	}
+
+	return a.stmt.check(t)
+}
 
 //-----------------------------------
 // Exp instances
@@ -331,6 +366,16 @@ func (e Or) pretty() string {
 	return x
 }
 
+func (g Group) pretty() string {
+
+	var x string
+	x = "("
+	x += g.pretty()
+	x += ")"
+
+	return x
+}
+
 // Evaluator
 
 func (x Bool) eval(s ValState) Val {
@@ -411,6 +456,14 @@ func (e Or) eval(s ValState) Val {
 	return mkUndefined()
 }
 
+func (g Group) eval(s ValState) Val {
+	e := g.eval(s)
+	if e.flag == Undefined {
+		return mkUndefined()
+	}
+	return e
+}
+
 // Type inferencer/checker
 
 func (x Var) infer(t TyState) Type {
@@ -461,17 +514,31 @@ func (e Plus) infer(t TyState) Type {
 func (e And) infer(t TyState) Type {
 	t1 := e[0].infer(t)
 	t2 := e[1].infer(t)
-	if t1 == TyBool && t2 == TyBool {
-		return TyBool
+	if t1 != TyBool {
+		return TyIllTyped
+	} else if t2 != TyBool {
+		return TyIllTyped
 	}
-	return TyIllTyped
+	return TyBool
 }
 
 func (e Or) infer(t TyState) Type {
 	t1 := e[0].infer(t)
 	t2 := e[1].infer(t)
-	if t1 == TyBool && t2 == TyBool {
-		return TyBool
+
+	if t1 != TyBool {
+		return TyIllTyped
+	} else if t2 != TyBool {
+		return TyIllTyped
+	}
+	return TyBool
+}
+
+func (g Group) infer(t TyState) Type {
+	ty := g.infer(t)
+
+	if ty != TyIllTyped {
+		return ty
 	}
 	return TyIllTyped
 }
@@ -526,6 +593,10 @@ func or(x, y Exp) Exp {
 	return (Or)([2]Exp{x, y})
 }
 
+func group(x Exp) Exp {
+	return (Group)([1]Exp{x})
+}
+
 func negate(x Exp) Exp {
 	// return Negate([1]Exp{x})
 	neg := Negate([1]Exp{x})
@@ -540,21 +611,33 @@ func lesser(x, y Exp) Exp {
 	return (Lesser)([2]Exp{x, y})
 }
 
-// func while(x, y Exp) Exp {
-// 	return (While)([2]Exp{x, y})
-// }
+func decl(lhs string, rhs Exp) Stmt {
+	return (Decl)(Decl{lhs, rhs})
+}
+
+func assig(lhs string, rhs Exp) Stmt {
+	return (Assign)(Assign{lhs, rhs})
+}
+
+func whil(e Exp, s Stmt) Stmt {
+	return (While)(While{e, s})
+}
 
 // func print(x Exp) Exp {
 // 	return (Print)([1]Exp{x})
 // }
 
-func ite(cond Exp, stmt1, stmt2 Stmt) IfThenElse {
-	return IfThenElse{cond, stmt1, stmt2}
+func ite(cond Exp, stmt1, stmt2 Stmt) Stmt {
+	return (IfThenElse)(IfThenElse{cond, stmt1, stmt2})
+}
+
+func seq(s1, s2 Stmt) Stmt {
+	return (Seq)(Seq{s1, s2})
 }
 
 // Examples
 
-func run(e Exp) {
+func runExp(e Exp) {
 	s := make(map[string]Val)
 	t := make(map[string]Type)
 	fmt.Printf("\n ******* ")
@@ -563,37 +646,74 @@ func run(e Exp) {
 	fmt.Printf("\n %s", showType(e.infer(t)))
 }
 
+func runStmt(stmt Stmt) {
+	s := make(map[string]Val)
+	t := make(map[string]Type)
+	fmt.Printf("\n ******* ")
+	fmt.Printf("\n %s", stmt.pretty())
+	// fmt.Printf("\n %s", showVal(e.eval(s)))
+	stmt.eval(s)
+	fmt.Printf("\n %t", stmt.check(t))
+}
+
 func ex1() {
 	ast := plus(mult(number(1), number(2)), number(0))
 
-	run(ast)
+	runExp(ast)
 }
 
 func ex2() {
 	ast := and(boolean(false), number(0))
-	run(ast)
+	runExp(ast)
 }
 
 func ex3() {
 	ast := or(boolean(false), number(0))
-	run(ast)
+	runExp(ast)
 }
 
 func ex4() {
 	ast := negate(number(2))
-	run(ast)
+	runExp(ast)
 }
 
 func ex5() {
 	ast := lesser(number(2), number(4))
-	run(ast)
+	runExp(ast)
 }
 
-// func ex6() {
-// 	ast := ite(lesser(number(2), number(4)), number(2), number(1))
+func ex6() {
+	// ast := decl("x", boolean(true))
+	ast := assig("z", boolean(false))
+	ast1 := assig("z", number(4))
+	// ast := assig(decl("x", boolean(true)), number(4))
+	runStmt(ast)
+	runStmt(ast1)
+}
 
-// 	run(ast)
+func ex7() {
+	ast := seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true)))
+
+	runStmt(ast)
+}
+
+func ex8() {
+	ast := ite(lesser(number(5), number(4)), decl("x", boolean(true)), decl("y", number(3)))
+
+	runStmt(ast)
+}
+
+// func ex9() {
+// 	ast := whil(lesser(number(6), number(4)), seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true))))
+// 	seq(decl("x", number(2)), whil(lesser(x, number(4)), seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true)))))
+
+// 	runStmt(ast)
 // }
+
+func ex10() {
+	ast := group(lesser(number(6), number(4)))
+	runExp(ast)
+}
 
 func main() {
 
@@ -604,5 +724,9 @@ func main() {
 	ex3()
 	ex4()
 	ex5()
-
+	ex6()
+	ex7()
+	ex8()
+	// ex9()
+	// ex10() // ???????????????????????????????????
 }
