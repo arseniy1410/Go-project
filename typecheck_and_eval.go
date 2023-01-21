@@ -112,12 +112,11 @@ type Assign struct {
 	rhs Exp
 }
 
-type Print [1]Exp
-
 // Expression cases (incomplete)
 
 type Bool bool
 type Num int
+type Print [1]Exp
 type Negate [1]Exp
 type Mult [2]Exp
 type Plus [2]Exp
@@ -154,7 +153,7 @@ func (whl While) pretty() string {
 }
 
 func (pt Print) pretty() string {
-	return pt.pretty()
+	return "print " + pt[0].pretty()
 }
 
 // eval
@@ -194,8 +193,8 @@ func (whl While) eval(s ValState) {
 	}
 }
 
-func (prnt Print) eval(s ValState) {
-	prnt[0].eval(s)
+func (pt Print) eval(s ValState) {
+	pt[0].eval(s)
 }
 
 // Maps are represented via points.
@@ -209,6 +208,9 @@ func (decl Decl) eval(s ValState) {
 func (asgn Assign) eval(s ValState) {
 	v := asgn.rhs.eval(s)
 	x := (string)(asgn.lhs)
+	// if (asgn.rhs.infer(s) == asgn.lhs.) {
+
+	// }
 	s[x] = v
 }
 
@@ -234,16 +236,12 @@ func (decl Decl) check(t TyState) bool {
 
 func (a Assign) check(t TyState) bool {
 	ty := a.rhs.infer(t)
-	if ty == TyIllTyped {
+	if ty == TyIllTyped || t[a.lhs] != ty {
 		return false
 	}
+	// x := (string)(a.lhs)
 
-	x := (string)(a.lhs)
-	t[x] = ty
-	// if tx == TyIllTyped || ty != tx {
-	// 	return false
-	// }
-	return true
+	return t[a.lhs] == a.rhs.infer(t)
 }
 
 func (ite IfThenElse) check(t TyState) bool {
@@ -258,13 +256,18 @@ func (ite IfThenElse) check(t TyState) bool {
 	return th && el
 }
 
-func (a While) check(t TyState) bool {
-	ty := a.cond.infer(t)
+func (whl While) check(t TyState) bool {
+	ty := whl.cond.infer(t)
 	if ty == TyIllTyped {
 		return false
 	}
 
-	return a.stmt.check(t)
+	return whl.stmt.check(t)
+}
+
+func (pt Print) check(t TyState) bool {
+
+	return pt[0].infer(t) != TyIllTyped
 }
 
 //-----------------------------------
@@ -370,7 +373,7 @@ func (g Group) pretty() string {
 
 	var x string
 	x = "("
-	x += g.pretty()
+	x += g[0].pretty()
 	x += ")"
 
 	return x
@@ -457,7 +460,7 @@ func (e Or) eval(s ValState) Val {
 }
 
 func (g Group) eval(s ValState) Val {
-	e := g.eval(s)
+	e := g[0].eval(s)
 	if e.flag == Undefined {
 		return mkUndefined()
 	}
@@ -535,7 +538,7 @@ func (e Or) infer(t TyState) Type {
 }
 
 func (g Group) infer(t TyState) Type {
-	ty := g.infer(t)
+	ty := g[0].infer(t)
 
 	if ty != TyIllTyped {
 		return ty
@@ -556,7 +559,7 @@ func (e Lesser) infer(t TyState) Type {
 	t1 := e[0].infer(t)
 	t2 := e[1].infer(t)
 	if t1 == TyInt && t2 == TyInt {
-		return TyInt
+		return TyBool
 	}
 	return TyIllTyped
 }
@@ -621,6 +624,10 @@ func assig(lhs string, rhs Exp) Stmt {
 
 func whil(e Exp, s Stmt) Stmt {
 	return (While)(While{e, s})
+}
+
+func print(e Exp) Stmt {
+	return (Print)([1]Exp{e})
 }
 
 // func print(x Exp) Exp {
@@ -703,30 +710,55 @@ func ex8() {
 	runStmt(ast)
 }
 
-// func ex9() {
-// 	ast := whil(lesser(number(6), number(4)), seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true))))
-// 	seq(decl("x", number(2)), whil(lesser(x, number(4)), seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true)))))
+func ex9() {
+	// ast := whil(lesser(number(6), number(4)), seq(print("x"), seq(decl("x", mult(number(2), number(2))), assig("x", number(2))))) // boolean(true)
 
-// 	runStmt(ast)
-// }
+	declare := decl("x", number(1))
+	assign2 := assig("x", number(2))
+	assign3 := assig("x", boolean(false))
+	lesser := lesser("x", number(1))
+	ite := ite(lesser, assign2, assign3)
+
+	ast1 := seq(declare, ite)
+
+	// runStmt(ast)
+	runStmt(ast1)
+}
 
 func ex10() {
 	ast := group(lesser(number(6), number(4)))
 	runExp(ast)
 }
 
+func ex11() {
+	// ast1 := lesser(number(2), number(4))
+	ast2 := print(lesser(number(7), boolean(true)))
+	// runExp(ast1)
+	runStmt(ast2)
+}
+
+func ex12() {
+	declare := decl("x", number(1))
+	assign := assig("x", boolean(true))
+
+	ast := seq(declare, assign)
+	runStmt(ast)
+}
+
 func main() {
 
 	fmt.Printf("\n")
 
-	ex1()
-	ex2()
-	ex3()
-	ex4()
-	ex5()
-	ex6()
-	ex7()
-	ex8()
-	// ex9()
-	// ex10() // ???????????????????????????????????
+	// ex1()
+	// ex2()
+	// ex3()
+	// ex4()
+	// ex5()
+	// ex6()
+	// ex7()
+	// ex8()
+	ex9()
+	// ex10()
+	// ex11()
+	// ex12()
 }
