@@ -92,7 +92,7 @@ type Stmt interface {
 type Seq [2]Stmt
 
 type Decl struct {
-	lhs string
+	lhs Var
 	rhs Exp
 }
 type IfThenElse struct {
@@ -107,8 +107,8 @@ type While struct {
 }
 
 type Assign struct {
-	lhs string
-	// lhs Exp
+	// lhs string
+	lhs Var
 	rhs Exp
 }
 
@@ -137,11 +137,11 @@ func (stmt Seq) pretty() string {
 }
 
 func (decl Decl) pretty() string {
-	return decl.lhs + " := " + decl.rhs.pretty()
+	return decl.lhs.pretty() + " := " + decl.rhs.pretty()
 }
 
 func (assgn Assign) pretty() string {
-	return assgn.lhs + " = " + assgn.rhs.pretty()
+	return assgn.lhs.pretty() + " = " + assgn.rhs.pretty()
 }
 
 func (ifStmnt IfThenElse) pretty() string {
@@ -200,18 +200,19 @@ func (pt Print) eval(s ValState) {
 // Maps are represented via points.
 // Hence, maps are passed by "reference" and the update is visible for the caller as well.
 func (decl Decl) eval(s ValState) {
-	v := decl.rhs.eval(s)
-	x := (string)(decl.lhs)
-	s[x] = v
+	// v := decl.rhs.eval(s)
+	// x := (string)(decl.lhs)
+	// s[x] = v
+	decl.lhs.eval(s)
+	decl.rhs.eval(s)
 }
 
 func (asgn Assign) eval(s ValState) {
-	v := asgn.rhs.eval(s)
-	x := (string)(asgn.lhs)
-	// if (asgn.rhs.infer(s) == asgn.lhs.) {
-
-	// }
-	s[x] = v
+	// v := asgn.rhs.eval(s)
+	// x := (string)(asgn.lhs)
+	// s[x] = v
+	asgn.lhs.eval(s)
+	asgn.rhs.eval(s)
 }
 
 // type check
@@ -228,20 +229,31 @@ func (decl Decl) check(t TyState) bool {
 	if ty == TyIllTyped {
 		return false
 	}
-
-	x := (string)(decl.lhs)
-	t[x] = ty
+	// x := (string)(decl.lhs)
+	// t[x] = ty
+	// return true
+	tyl := decl.lhs.infer(t)
+	if tyl == TyIllTyped {
+		return false
+	}
 	return true
 }
 
 func (a Assign) check(t TyState) bool {
-	ty := a.rhs.infer(t)
-	if ty == TyIllTyped || t[a.lhs] != ty {
-		return false
-	}
-	// x := (string)(a.lhs)
+	// ty := a.rhs.infer(t)
+	// if ty == TyIllTyped || t[a.lhs] != ty {
+	// 	return false
+	// }
+	// // x := (string)(a.lhs)
 
-	return t[a.lhs] == a.rhs.infer(t)
+	// return t[a.lhs] == a.rhs.infer(t)
+	tyr := a.rhs.infer(t)
+	tyl := a.lhs.infer(t)
+
+	if tyl == TyBool && tyr == TyBool || tyl == TyInt && tyr == TyInt {
+		return true
+	}
+	return false
 }
 
 func (ite IfThenElse) check(t TyState) bool {
@@ -276,7 +288,7 @@ func (pt Print) check(t TyState) bool {
 // pretty print
 
 func (x Var) pretty() string {
-	return (string)(x)
+	return "var " + (string)(x)
 }
 
 func (x Bool) pretty() string {
@@ -380,6 +392,16 @@ func (g Group) pretty() string {
 }
 
 // Evaluator
+
+func (v Var) eval(s ValState) Val {
+	// if v.flag == ValueBool {
+	// 	return mkBool((bool)(x))
+	// } else if v.flag == ValueInt {
+	// 	return mkInt((int)(x))
+	// }
+	// return mkUndefined()
+	return v.eval(s)
+}
 
 func (x Bool) eval(s ValState) Val {
 	return mkBool((bool)(x))
@@ -566,6 +588,10 @@ func (e Lesser) infer(t TyState) Type {
 
 // Helper functions to build ASTs by hand
 
+func vrbl(x string) Var {
+	return Var(x)
+}
+
 func number(x int) Exp {
 	return Num(x)
 }
@@ -614,11 +640,11 @@ func lesser(x, y Exp) Exp {
 	return (Lesser)([2]Exp{x, y})
 }
 
-func decl(lhs string, rhs Exp) Stmt {
+func decl(lhs Var, rhs Exp) Stmt {
 	return (Decl)(Decl{lhs, rhs})
 }
 
-func assig(lhs string, rhs Exp) Stmt {
+func assig(lhs Var, rhs Exp) Stmt {
 	return (Assign)(Assign{lhs, rhs})
 }
 
@@ -663,6 +689,16 @@ func runStmt(stmt Stmt) {
 	fmt.Printf("\n %t", stmt.check(t))
 }
 
+func runVar(vb Var) {
+	// s := make(map[string]Val)
+	// t := make(map[string]Type)
+	fmt.Printf("\n ******* ")
+	fmt.Printf("\n %s", vb.pretty())
+	// fmt.Printf("\n %s", showVal(e.eval(s)))
+	// vb.eval(s)
+	// fmt.Printf("\n %s", showType(vb.infer(t)))
+}
+
 func ex1() {
 	ast := plus(mult(number(1), number(2)), number(0))
 
@@ -691,21 +727,21 @@ func ex5() {
 
 func ex6() {
 	// ast := decl("x", boolean(true))
-	ast := assig("z", boolean(false))
-	ast1 := assig("z", number(4))
+	ast := assig(vrbl("z"), boolean(false))
+	ast1 := assig(vrbl("x"), number(4))
 	// ast := assig(decl("x", boolean(true)), number(4))
 	runStmt(ast)
 	runStmt(ast1)
 }
 
 func ex7() {
-	ast := seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true)))
+	ast := seq(decl(vrbl("x"), mult(number(2), number(2))), assig(vrbl("x"), boolean(true)))
 
 	runStmt(ast)
 }
 
 func ex8() {
-	ast := ite(lesser(number(5), number(4)), decl("x", boolean(true)), decl("y", number(3)))
+	ast := ite(lesser(number(5), number(4)), decl(vrbl("x"), boolean(true)), decl(vrbl("x"), number(3)))
 
 	runStmt(ast)
 }
@@ -713,10 +749,12 @@ func ex8() {
 func ex9() {
 	// ast := whil(lesser(number(6), number(4)), seq(print("x"), seq(decl("x", mult(number(2), number(2))), assig("x", number(2))))) // boolean(true)
 
-	declare := decl("x", number(1))
-	assign2 := assig("x", number(2))
-	assign3 := assig("x", boolean(false))
-	lesser := lesser("x", number(1))
+	// vrb := vrbl("x")
+
+	declare := decl(vrbl("x"), number(1))
+	assign2 := assig(vrbl("x"), number(2))
+	assign3 := assig(vrbl("x"), number(7))
+	lesser := lesser(vrbl("x"), number(1))
 	ite := ite(lesser, assign2, assign3)
 
 	ast1 := seq(declare, ite)
@@ -738,10 +776,20 @@ func ex11() {
 }
 
 func ex12() {
-	declare := decl("x", number(1))
-	assign := assig("x", boolean(true))
+	declare := decl(vrbl("x"), number(1))
+	assign := assig(vrbl("x"), boolean(true))
 
 	ast := seq(declare, assign)
+	runStmt(ast)
+}
+
+func ex13() {
+	v := vrbl("x")
+	runVar(v)
+	declare := decl(vrbl("x"), number(1))
+	// assign := assig(vrbl("x"), number(4))
+
+	ast := declare //seq(declare, assign)
 	runStmt(ast)
 }
 
@@ -757,8 +805,9 @@ func main() {
 	// ex6()
 	// ex7()
 	// ex8()
-	ex9()
+	// ex9()
 	// ex10()
 	// ex11()
 	// ex12()
+	ex13()
 }
