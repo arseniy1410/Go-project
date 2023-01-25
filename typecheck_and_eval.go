@@ -108,7 +108,6 @@ type While struct {
 
 type Assign struct {
 	lhs string
-	// lhs Exp
 	rhs Exp
 }
 
@@ -145,15 +144,15 @@ func (assgn Assign) pretty() string {
 }
 
 func (ifStmnt IfThenElse) pretty() string {
-	return "if" + ifStmnt.cond.pretty() + "{" + ifStmnt.thenStmt.pretty() + "} else {" + ifStmnt.elseStmt.pretty() + "}"
+	return "if " + ifStmnt.cond.pretty() + " { " + ifStmnt.thenStmt.pretty() + " } else { " + ifStmnt.elseStmt.pretty() + " }"
 }
 
 func (whl While) pretty() string {
-	return "while" + whl.cond.pretty() + "{" + whl.stmt.pretty() + "}"
+	return "while " + whl.cond.pretty() + " { " + whl.stmt.pretty() + " } "
 }
 
 func (pt Print) pretty() string {
-	return pt[0].pretty()
+	return "print " + pt[0].pretty()
 }
 
 // eval
@@ -184,7 +183,7 @@ func (whl While) eval(s ValState) {
 	if v.flag == ValueBool {
 		for {
 			whl.stmt.eval(s)
-			if !v.valB {
+			if !whl.cond.eval(s).valB {
 				break
 			}
 		}
@@ -194,7 +193,14 @@ func (whl While) eval(s ValState) {
 }
 
 func (pt Print) eval(s ValState) {
-	pt[0].eval(s)
+	b := pt[0].eval(s)
+	if b.flag == ValueBool {
+		fmt.Printf("\n>> %t", b.valB)
+	} else if b.flag == ValueInt {
+		fmt.Printf("\n>> %d", b.valI)
+	} else {
+		fmt.Printf("\n>> Undefined")
+	}
 }
 
 // Maps are represented via points.
@@ -208,7 +214,7 @@ func (decl Decl) eval(s ValState) {
 func (asgn Assign) eval(s ValState) {
 	v := asgn.rhs.eval(s)
 	x := (string)(asgn.lhs)
-	// if (asgn.rhs.infer(s) == asgn.lhs.) {
+	// if asgn.check(s) {
 
 	// }
 	s[x] = v
@@ -235,12 +241,16 @@ func (decl Decl) check(t TyState) bool {
 }
 
 func (a Assign) check(t TyState) bool {
-	ty := a.rhs.infer(t)
-	if ty == TyIllTyped || t[a.lhs] != ty {
+	// ty := a.rhs.infer(t)
+	// if ty == TyIllTyped {
+	// 	return false
+	// }
+	// return t[a.lhs] == ty
+
+	_, ok := t[a.lhs]
+	if !ok {
 		return false
 	}
-	// x := (string)(a.lhs)
-
 	return t[a.lhs] == a.rhs.infer(t)
 }
 
@@ -382,14 +392,12 @@ func (g Group) pretty() string {
 // Evaluator
 
 func (v Var) eval(s ValState) Val {
-	vb := v.eval(s)
-	if vb.flag == ValueBool {
-		return mkBool((bool)(vb.valB))
-	} else if vb.flag == ValueInt {
-		return mkInt((int)(vb.valI))
+	x := (string)(v)
+	_, ok := s[x]
+	if !ok {
+		return mkUndefined()
 	}
-	return mkUndefined()
-	// return v.eval(s)
+	return s[x]
 }
 
 func (x Bool) eval(s ValState) Val {
@@ -410,7 +418,7 @@ func (e Equals) eval(s ValState) Val {
 	if b1.flag == ValueBool && b2.flag == ValueBool {
 		return mkBool(b1.valB == b2.valB)
 	} else if b1.flag == ValueInt && b2.flag == ValueInt {
-		return mkBool(b1.valI < b2.valI)
+		return mkBool(b1.valI == b2.valI)
 	}
 	return mkUndefined()
 }
@@ -645,10 +653,6 @@ func print(e Exp) Stmt {
 	return (Print)([1]Exp{e})
 }
 
-// func print(x Exp) Exp {
-// 	return (Print)([1]Exp{x})
-// }
-
 func ite(cond Exp, stmt1, stmt2 Stmt) Stmt {
 	return (IfThenElse)(IfThenElse{cond, stmt1, stmt2})
 }
@@ -678,6 +682,12 @@ func runStmt(stmt Stmt) {
 	fmt.Printf("\n %t", stmt.check(t))
 }
 
+func ex0() {
+	ast := mult(mult(number(3), number(2)), number(6))
+
+	runExp(ast)
+}
+
 func ex1() {
 	ast := plus(mult(number(1), number(2)), number(0))
 
@@ -705,99 +715,76 @@ func ex5() {
 }
 
 func ex6() {
-	// ast := decl("x", boolean(true))
-	ast := assig("z", boolean(false))
-	ast1 := assig("z", number(4))
-	// ast := assig(decl("x", boolean(true)), number(4))
-	runStmt(ast)
-	runStmt(ast1)
+	ast := equals(number(2), number(5))
+
+	runExp(ast)
 }
 
 func ex7() {
-	ast := seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true)))
+	ast := seq(seq(decl("x", mult(number(2), number(2))), assig("x", boolean(true))), print(vrbl("x")))
 
 	runStmt(ast)
 }
 
 func ex8() {
-	ast := ite(lesser(number(5), number(4)), decl("x", boolean(true)), decl("y", number(3)))
+	declare := decl("x", number(1))
 
+	lesser := lesser(vrbl("x"), number(1))
+	then := seq(decl("y", number(2)), print(vrbl("y")))
+	els := seq(decl("z", boolean(true)), print(vrbl("z")))
+
+	ite := ite(lesser, then, els)
+	prt := print(vrbl("x"))
+
+	ast := seq(seq(declare, ite), prt)
 	runStmt(ast)
 }
 
 func ex9() {
-	// ast := whil(lesser(number(6), number(4)), seq(print("x"), seq(decl("x", mult(number(2), number(2))), assig("x", number(2))))) // boolean(true)
+	declare := decl("x", number(-1))
 
-	declare := decl("x", number(1))
-	assign2 := assig("x", number(2))
-	assign3 := assig("x", boolean(false))
 	lesser := lesser(vrbl("x"), number(1))
-	ite := ite(lesser, assign2, assign3)
+	then := assig("x", number(2))
+	els := assig("x", boolean(false))
 
-	ast1 := seq(declare, ite)
+	ite := ite(lesser, then, els)
+	prt := print(vrbl("x"))
 
-	// runStmt(ast)
-	runStmt(ast1)
+	ast := seq(seq(declare, ite), prt)
+	runStmt(ast)
 }
 
 func ex10() {
-	ast := group(lesser(number(6), number(4)))
-	runExp(ast)
+	declare := decl("x", number(1))
+
+	whl := whil(lesser(vrbl("x"), number(4)), seq(print(vrbl("x")), assig("x", plus(vrbl("x"), number(1)))))
+	ast := seq(declare, whl)
+	runStmt(ast)
 }
 
 func ex11() {
-	// ast1 := lesser(number(2), number(4))
-	ast2 := print(lesser(number(7), boolean(true)))
-	// runExp(ast1)
-	runStmt(ast2)
-}
+	declare := decl("x", number(-1))
+	assign := assig("x", plus(vrbl("x"), number(3)))
+	print := print(vrbl("x"))
 
-func ex12() {
-	declare := decl("x", number(1))
-	assign := assig("x", number(4))
-	// print := print(vrbl("x"))
-
-	ast := seq(declare, assign)
-	// ast := seq(seq(declare, assign), print)
+	ast := seq(seq(declare, assign), print)
 	runStmt(ast)
-}
-
-func ex13() {
-	// v := vrbl("x")
-	// runVar(v)
-	declare := decl("x", number(1))
-	// assign := assig(vrbl("x"), number(4))
-
-	ast := declare //seq(declare, assign)
-	runStmt(ast)
-}
-
-func ex14() {
-	declare := decl("x", number(1))
-	lesser := lesser(vrbl("x"), number(1))
-
-	ast := declare
-	runStmt(ast)
-	ast1 := lesser
-	runExp(ast1)
 }
 
 func main() {
 
 	fmt.Printf("\n")
 
-	// ex1()
-	// ex2()
-	// ex3()
-	// ex4()
-	// ex5()
-	// ex6()
-	// ex7()
-	// ex8()
-	// // ex9()
-	// ex10()
-	// ex11()
-	// ex12()
-	// ex13()
-	ex14()
+	ex0()
+	ex1()
+	ex2()
+	ex3()
+	ex4()
+	ex5()
+	ex6()
+	ex7()
+	ex8()
+	ex9()
+	ex10()
+	ex11()
 }
