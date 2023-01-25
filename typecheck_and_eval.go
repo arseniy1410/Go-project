@@ -153,7 +153,7 @@ func (whl While) pretty() string {
 }
 
 func (pt Print) pretty() string {
-	return "print " + pt[0].pretty()
+	return pt[0].pretty()
 }
 
 // eval
@@ -381,6 +381,17 @@ func (g Group) pretty() string {
 
 // Evaluator
 
+func (v Var) eval(s ValState) Val {
+	vb := v.eval(s)
+	if vb.flag == ValueBool {
+		return mkBool((bool)(vb.valB))
+	} else if vb.flag == ValueInt {
+		return mkInt((int)(vb.valI))
+	}
+	return mkUndefined()
+	// return v.eval(s)
+}
+
 func (x Bool) eval(s ValState) Val {
 	return mkBool((bool)(x))
 }
@@ -566,6 +577,10 @@ func (e Lesser) infer(t TyState) Type {
 
 // Helper functions to build ASTs by hand
 
+func vrbl(x string) Exp {
+	return Var(x)
+}
+
 func number(x int) Exp {
 	return Num(x)
 }
@@ -716,7 +731,7 @@ func ex9() {
 	declare := decl("x", number(1))
 	assign2 := assig("x", number(2))
 	assign3 := assig("x", boolean(false))
-	lesser := lesser("x", number(1))
+	lesser := lesser(vrbl("x"), number(1))
 	ite := ite(lesser, assign2, assign3)
 
 	ast1 := seq(declare, ite)
@@ -739,10 +754,32 @@ func ex11() {
 
 func ex12() {
 	declare := decl("x", number(1))
-	assign := assig("x", boolean(true))
+	assign := assig("x", number(4))
+	// print := print(vrbl("x"))
 
 	ast := seq(declare, assign)
+	// ast := seq(seq(declare, assign), print)
 	runStmt(ast)
+}
+
+func ex13() {
+	// v := vrbl("x")
+	// runVar(v)
+	declare := decl("x", number(1))
+	// assign := assig(vrbl("x"), number(4))
+
+	ast := declare //seq(declare, assign)
+	runStmt(ast)
+}
+
+func ex14() {
+	declare := decl("x", number(1))
+	lesser := lesser(vrbl("x"), number(1))
+
+	ast := declare
+	runStmt(ast)
+	ast1 := lesser
+	runExp(ast1)
 }
 
 func main() {
@@ -757,8 +794,10 @@ func main() {
 	// ex6()
 	// ex7()
 	// ex8()
-	ex9()
+	// // ex9()
 	// ex10()
 	// ex11()
 	// ex12()
+	// ex13()
+	ex14()
 }
